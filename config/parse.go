@@ -79,6 +79,14 @@ func parseAuthSection(p *configparser.ConfigParser, config *Config, section stri
 		}
 		config.Username = strings.TrimSpace(lines[0])
 		config.Password = strings.TrimSpace(lines[1])
+	case "env":
+		username := os.Getenv("ILIAS_USERNAME")
+		password := os.Getenv("ILIAS_PASSWORD")
+		if username == "" || password == "" {
+			return fmt.Errorf("environment variables ILIAS_USERNAME or ILIAS_PASSWORD are not set")
+		}
+		config.Username = username
+		config.Password = password
 	default:
 		return fmt.Errorf("unsupported auth type: %s", authType)
 	}
