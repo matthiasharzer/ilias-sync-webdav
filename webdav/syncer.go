@@ -2,18 +2,38 @@ package webdav
 
 import (
 	"fmt"
+	"io/fs"
 	"iter"
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 
-	"github.com/matthiasharzer/ilias-sync-webdav/logging"
 	"github.com/matthiasharzer/ilias-sync-webdav/queue"
 	"github.com/studio-b12/gowebdav"
 )
 
-func iterFiles(client *gowebdav.Client) iter.Seq2[string, error] {
-	return func(yield func(string, error) bool) {
+const (
+	webdavInfoFileName               = "#!_WEBDAV_INFORMATION.txt"
+	webdavInfoNotDisplayedNotePrefix = "# Folgende Objekte konnten nicht angezeigt werden"
+)
+
+func isWebdavInfoFile(remoteFile fileInfo) bool {
+	return remoteFile.info.Name() == webdavInfoFileName
+}
+
+type fileInfo struct {
+	path string
+	info fs.FileInfo
+}
+
+type urlSyncer struct {
+	client         *gowebdav.Client
+	localDirectory string
+}
+
+func (s *urlSyncer) iterFiles() iter.Seq2[fileInfo, error] {
+	return func(yield func(fileInfo, error) bool) {
 		directories := queue.NewQueue("/")
 
 		for !directories.IsEmpty() {
@@ -22,9 +42,9 @@ func iterFiles(client *gowebdav.Client) iter.Seq2[string, error] {
 				break
 			}
 
-			files, err := client.ReadDir(webdavPath)
+			files, err := s.client.ReadDir(webdavPath)
 			if err != nil {
-				yield("", fmt.Errorf("failed to read webdav directory /: %v", err))
+				yield(fileInfo{}, fmt.Errorf("failed to read webdav directory /: %v", err))
 				return
 			}
 
@@ -35,7 +55,10 @@ func iterFiles(client *gowebdav.Client) iter.Seq2[string, error] {
 					continue
 				}
 
-				if !yield(filePath, nil) {
+				if !yield(fileInfo{
+					path: filePath,
+					info: file,
+				}, nil) {
 					return
 				}
 			}
@@ -43,42 +66,130 @@ func iterFiles(client *gowebdav.Client) iter.Seq2[string, error] {
 	}
 }
 
-func downloadFile(client *gowebdav.Client, remotePath, localDirectory string) error {
-	stream, err := client.ReadStream(remotePath)
+func (s *urlSyncer) getWebdavIgnoredFiles(remoteFile fileInfo) (string, []string, error) {
+	contents, err := s.client.Read(remoteFile.path)
 	if err != nil {
-		return err
+		return "", nil, fmt.Errorf("failed to read webdav info file: %w", err)
+	}
+
+	lines := strings.Split(string(contents), "\n")
+
+	if len(lines) == 0 {
+		return "", nil, nil
+	}
+
+	if !strings.HasPrefix(lines[0], webdavInfoNotDisplayedNotePrefix) {
+		return "", nil, nil
+	}
+
+	reason := strings.TrimPrefix(lines[0], "# ")
+
+	var ignoredFiles []string
+	for _, line := range lines {
+		if strings.HasPrefix(line, "#") {
+			continue
+		}
+		cleanedLine := strings.TrimSpace(line)
+		if len(cleanedLine) > 0 {
+			ignoredFiles = append(ignoredFiles, cleanedLine)
+		}
+	}
+	return reason, ignoredFiles, nil
+}
+
+func (s *urlSyncer) downloadFile(remotePath string) (string, error) {
+	stream, err := s.client.ReadStream(remotePath)
+	if err != nil {
+		return "", err
 	}
 	defer func() {
-		err := stream.Close()
-		if err != nil {
-			logging.Error("Failed to close stream", "error", err)
-		}
+		_ = stream.Close()
 	}()
 
-	localFilePath := filepath.Join(localDirectory, remotePath)
+	localFilePath := filepath.Join(s.localDirectory, remotePath)
 	err = os.MkdirAll(filepath.Dir(localFilePath), os.ModePerm)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	localFile, err := os.Create(localFilePath)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer func() {
-		err := localFile.Close()
-		if err != nil {
-			logging.Error("Failed to close file", "error", err)
-		}
+		_ = localFile.Close()
 	}()
 
 	_, err = localFile.ReadFrom(stream)
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	logging.Info("Downloaded file", "remotePath", remotePath, "localPath", localFilePath)
-	return nil
+	return localFilePath, nil
+}
+
+func (s *urlSyncer) syncAll() iter.Seq[Event] {
+	return func(yield func(Event) bool) {
+		for file, err := range s.iterFiles() {
+			if err != nil {
+				if !yield(ErrorEvent{
+					Err:        fmt.Errorf("failed to iter files: %w", err),
+					RemoteFile: file.path,
+				}) {
+					return
+				}
+			}
+
+			if isWebdavInfoFile(file) {
+				if s.yieldWebdavIgnoredFiles(yield, file) {
+					return
+				}
+				continue
+			}
+
+			localFilePath, err := s.downloadFile(file.path)
+			if err != nil {
+				if !yield(ErrorEvent{
+					Err:        fmt.Errorf("failed to download file %s: %w", file, err),
+					RemoteFile: file.path,
+				}) {
+					return
+				}
+				continue
+			}
+			if !yield(FileDownloadedEvent{
+				LocalFile:  localFilePath,
+				RemoteFile: file.path,
+				Stats:      file.info,
+			}) {
+				return
+			}
+		}
+	}
+
+}
+
+func (s *urlSyncer) yieldWebdavIgnoredFiles(yield func(Event) bool, file fileInfo) bool {
+	reason, ignoredFiles, err := s.getWebdavIgnoredFiles(file)
+	if err != nil {
+		if !yield(ErrorEvent{
+			Err:        fmt.Errorf("failed to download file %s: %w", file, err),
+			RemoteFile: file.path,
+		}) {
+			return true
+		}
+	}
+	fileParent := filepath.Dir(file.path)
+	for _, ignoredFile := range ignoredFiles {
+		if !yield(FileIgnoredEvent{
+			Reason:     reason,
+			RemoteFile: filepath.Join(fileParent, ignoredFile),
+			Stats:      file.info,
+		}) {
+			return true
+		}
+	}
+	return false
 }
 
 type Syncer struct {
@@ -103,22 +214,15 @@ func (s *Syncer) getClient(url string) (*gowebdav.Client, error) {
 	return client, nil
 }
 
-func (s *Syncer) Sync(url, localDirectory string) error {
+func (s *Syncer) Sync(url, localDirectory string) (iter.Seq[Event], error) {
 	client, err := s.getClient(url)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	for file, err := range iterFiles(client) {
-		if err != nil {
-			return fmt.Errorf("failed to iter files: %w", err)
-		}
-
-		err := downloadFile(client, file, localDirectory)
-		if err != nil {
-			return fmt.Errorf("failed to download file %s: %w", file, err)
-		}
+	syncer := urlSyncer{
+		client:         client,
+		localDirectory: localDirectory,
 	}
-
-	return nil
+	return syncer.syncAll(), nil
 }

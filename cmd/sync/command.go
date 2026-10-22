@@ -52,9 +52,20 @@ var Command = &cobra.Command{
 
 			courseURL := getILIASWebDavURL(syncerConfig.ILIASWebDAVBaseURL, target.CourseID)
 
-			err := syncer.Sync(courseURL, targetPath)
+			events, err := syncer.Sync(courseURL, targetPath)
 			if err != nil {
 				return fmt.Errorf("failed to sync course %s: %v", target.CourseID, err)
+			}
+
+			for event := range events {
+				switch e := event.(type) {
+				case webdav.FileDownloadedEvent:
+					fmt.Printf("Downloaded: %s -> %s\n", e.RemoteFile, e.LocalFile)
+				case webdav.FileIgnoredEvent:
+					fmt.Printf("Ignored: %s\n", e.RemoteFile)
+				case webdav.ErrorEvent:
+					fmt.Printf("Error: %s - %v\n", e.RemoteFile, e.Err)
+				}
 			}
 		}
 
