@@ -22,6 +22,16 @@ func isWebdavInfoFile(remoteFile fileInfo) bool {
 	return remoteFile.info.Name() == webdavInfoFileName
 }
 
+func remoteToLocalPath(localDirectory, remotePath string) string {
+	parts := strings.Split(remotePath, "/")
+	for i, part := range parts {
+		// Folders on ilias can have leading and trailing spaces, which are not allowed in local file paths. So we trim them.
+		parts[i] = strings.TrimSpace(part)
+	}
+	cleanedUpRemotePath := path.Join(parts...)
+	return filepath.Join(localDirectory, cleanedUpRemotePath)
+}
+
 type fileInfo struct {
 	path string
 	info fs.FileInfo
@@ -106,7 +116,7 @@ func (s *urlSyncer) downloadFile(remotePath string) (string, error) {
 		_ = stream.Close()
 	}()
 
-	localFilePath := filepath.Join(s.localDirectory, remotePath)
+	localFilePath := remoteToLocalPath(s.localDirectory, remotePath)
 	err = os.MkdirAll(filepath.Dir(localFilePath), os.ModePerm)
 	if err != nil {
 		return "", err
@@ -179,11 +189,11 @@ func (s *urlSyncer) yieldWebdavIgnoredFiles(yield func(Event) bool, file fileInf
 			return true
 		}
 	}
-	fileParent := filepath.Dir(file.path)
+	fileParent := path.Dir(file.path)
 	for _, ignoredFile := range ignoredFiles {
 		if !yield(FileIgnoredEvent{
 			Reason:     reason,
-			RemoteFile: filepath.Join(fileParent, ignoredFile),
+			RemoteFile: path.Join(fileParent, ignoredFile),
 			Stats:      file.info,
 		}) {
 			return true
