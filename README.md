@@ -28,8 +28,9 @@ The config file should look like this:
 ```ini
 ; Define some global settings
 [DEFAULT]
-url = https://ilias.example.com/webdav.php/...  ; The base URL of your ILIAS WebDAV endpoint
-directory = /path/to/download/directory         ; The local directory where files will be downloaded (grouped by course)
+url = https://ilias.example.com/webdav.php/...    ; The base URL of your ILIAS WebDAV endpoint
+directory = /path/to/download/directory           ; The local directory where files will be downloaded (grouped by course)
+file_already_exists_strategy = <skip | overwrite> ; (optional) What to do if a file already exists in the download directory. Default is 'skip'
 
 ; Authentication methods (choose one):
 [auth:basic]
