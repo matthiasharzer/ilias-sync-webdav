@@ -78,7 +78,7 @@ var Command = &cobra.Command{
 				fmt.Println("-----")
 			}
 			targetDirectory := filepath.Join(syncerConfig.LocalDirectory, target.Name)
-			fmt.Printf("Syncing course %s to local directory %s\n", color.BlueString(target.CourseID), color.GreenString(targetDirectory))
+			fmt.Printf("Syncing course %s (%s) to local directory %s\n", color.BlueString(target.Name), color.BlueString(target.CourseID), color.GreenString(targetDirectory))
 			targetPath := filepath.Join(syncerConfig.LocalDirectory, target.Name)
 			err = os.MkdirAll(targetPath, os.ModePerm)
 			if err != nil {
@@ -118,9 +118,6 @@ var Command = &cobra.Command{
 				}
 			}
 			globalStats.Add(stats)
-
-			fmt.Printf("-----\nSummary for course %s (%s):\n", color.BlueString(target.Name), color.BlueString(target.CourseID))
-			printStats(stats)
 		}
 		fmt.Printf("-----\nOverall Summary:\n")
 		printStats(globalStats)
