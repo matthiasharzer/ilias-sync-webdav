@@ -53,6 +53,10 @@ id = <course2-id>   ; The ID of the course you want to sync
 
 Exactly one authentication method must be configured.
 
+### Verified ILIAS URLs
+The following ILIAS URLs have been verified to work with this syncer:
+- https://ilias.h-ka.de/webdav.php/HSKA
+
 ## ILIAS WebDAV Limitations
 ILIAS WebDAV disallows some characters in file names, such as `:`, `*`, `?`, `"`, `<`, `>`, `|`, and `/`. Files containing these characters are not exposed via WebDAV and will not be downloaded. Though the syncer will log a warning for each file that is skipped, it is recommended to check the course files in the ILIAS web interface to ensure that all files have been downloaded.
 
