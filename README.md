@@ -5,11 +5,19 @@ Download your ILIAS course files using WebDAV.
 <br>
 
 ## Setup
+
 ### Binary
-Download the [latest release](https://github.com/matthiasharzer/ilias-sync-webdav/releases/latest) for your platform.
+The easiest way to get started is by downloading the [latest release](https://github.com/matthiasharzer/ilias-sync-webdav/releases/latest) for your platform.
+
+### Docker
+Alternatively, you can run the syncer in a Docker container using the pre-built image available on the [GitHub Container Registry](https://ghcr.io/matthiasharzer/ilias-sync-webdav). To do so, run the following command::
+
+```bash
+docker run --rm -v /path/to/download/directory:/data -v /path/to/config:/config ghcr.io/matthiasharzer/ilias-sync-webdav sync -c /config/ilias.cfg
+```
 
 ## Usage
-To start syncing one or multiple courses, you need to configure a config-file and run the following command:
+To start syncing one or multiple courses, you need to set up a config-file and run the following command:
 
 ```bash
 ilias-sync-webdav sync -c ilias.cfg
