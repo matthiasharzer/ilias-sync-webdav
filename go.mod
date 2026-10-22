@@ -1,6 +1,6 @@
-module github.com/username/template
+module github.com/matthiasharzer/ilias-sync-webdav
 
-go 1.26.5
+go 1.27.3
 
 tool honnef.co/go/tools/cmd/staticcheck
 

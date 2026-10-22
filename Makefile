@@ -1,6 +1,6 @@
 BUILD_VERSION ?= "unknown"
 
-OUTPUT_NAME := tool-name
+OUTPUT_NAME := ilias-sync-webdav
 MODULE_NAME := $(shell go list -m)
 
 clean:

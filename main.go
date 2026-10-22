@@ -4,13 +4,13 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/username/template/cmd/version"
+	"github.com/matthiasharzer/ilias-sync-webdav/cmd/version"
 
 	"github.com/spf13/cobra"
 )
 
 var rootCommand = &cobra.Command{
-	Use: "<tool-name>",
+	Use: "ilias-sync-webdav",
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		return cmd.Help()
 	},

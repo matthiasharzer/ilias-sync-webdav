@@ -11,6 +11,6 @@ var version = "unknown"
 var Command = &cobra.Command{
 	Use: "version",
 	Run: func(_ *cobra.Command, _ []string) {
-		fmt.Printf("<tool-name> version %s\n", version)
+		fmt.Printf("ilias-sync-webdav version %s\n", version)
 	},
 }
