@@ -30,13 +30,6 @@ var Command = &cobra.Command{
 	Use:  "sync",
 	Long: "Sync files from ILIAS WebDAV to local directory",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		username := os.Getenv("ILIAS_USERNAME")
-		password := os.Getenv("ILIAS_PASSWORD")
-
-		if username == "" || password == "" {
-			return fmt.Errorf("ILIAS_USERNAME and ILIAS_PASSWORD environment variables must be set")
-		}
-
 		syncerConfig, err := config.ParseFile(configFile)
 		if err != nil {
 			return fmt.Errorf("failed to parse config file: %v", err)
@@ -45,7 +38,7 @@ var Command = &cobra.Command{
 			return fmt.Errorf("no targets specified in the config file")
 		}
 
-		syncer, err := webdav.NewSyncer(username, password)
+		syncer, err := webdav.NewSyncer(syncerConfig.Username, syncerConfig.Password)
 		if err != nil {
 			return fmt.Errorf("failed to create WebDAV syncer: %v", err)
 		}

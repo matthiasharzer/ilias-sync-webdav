@@ -11,4 +11,6 @@ type Config struct {
 	Targets            []Target
 	ILIASWebDAVBaseURL url.URL
 	LocalDirectory     string
+	Username           string
+	Password           string
 }
