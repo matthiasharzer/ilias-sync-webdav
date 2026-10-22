@@ -14,6 +14,14 @@ type FileDownloadedEvent struct {
 
 func (FileDownloadedEvent) discriminator() {}
 
+type FileDownloadSkippedEvent struct {
+	Reason     string
+	RemoteFile string
+	Stats      fs.FileInfo
+}
+
+func (FileDownloadSkippedEvent) discriminator() {}
+
 type FileIgnoredEvent struct {
 	Reason     string
 	RemoteFile string

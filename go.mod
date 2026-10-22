@@ -6,6 +6,7 @@ tool honnef.co/go/tools/cmd/staticcheck
 
 require (
 	github.com/bigkevmcd/go-configparser v0.0.0-20260823144315-8f2e819df55d
+	github.com/dustin/go-humanize v1.1.0
 	github.com/fatih/color v1.19.0
 	github.com/spf13/cobra v1.10.2
 	github.com/studio-b12/gowebdav v0.13.0

@@ -31,6 +31,27 @@ func parseDefaultSection(p *configparser.ConfigParser, config *Config) error {
 		return err
 	}
 
+	hasExistsStrategy, err := p.HasOption("DEFAULT", "file_already_exists_strategy")
+	if err != nil {
+		return err
+	}
+	if hasExistsStrategy {
+		alreadyExistsStrategyStr, err := p.Get("DEFAULT", "file_already_exists_strategy")
+		if err != nil {
+			return err
+		}
+		switch alreadyExistsStrategyStr {
+		case "skip":
+			config.AlreadyExistsStrategy = Skip
+		case "overwrite":
+			config.AlreadyExistsStrategy = Overwrite
+		default:
+			return fmt.Errorf("invalid file_already_exists_strategy: %s", alreadyExistsStrategyStr)
+		}
+	} else {
+		config.AlreadyExistsStrategy = Skip // default strategy
+	}
+
 	config.ILIASWebDAVBaseURL = *urlParsed
 	config.LocalDirectory = localDir
 	return nil
