@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/matthiasharzer/ilias-sync-webdav/config"
 	"github.com/matthiasharzer/ilias-sync-webdav/queue"
 	"github.com/studio-b12/gowebdav"
 )
@@ -38,8 +39,9 @@ type fileInfo struct {
 }
 
 type urlSyncer struct {
-	client         *gowebdav.Client
-	localDirectory string
+	client                    *gowebdav.Client
+	localDirectory            string
+	fileAlreadyExistsStrategy config.AlreadyExistsStrategy
 }
 
 func (s *urlSyncer) iterFiles() iter.Seq2[fileInfo, error] {
@@ -107,24 +109,23 @@ func (s *urlSyncer) getWebdavIgnoredFiles(remoteFile fileInfo) (string, []string
 	return reason, ignoredFiles, nil
 }
 
-func (s *urlSyncer) downloadFile(remotePath string) (string, error) {
+func (s *urlSyncer) downloadFile(remotePath, localFilePath string) error {
 	stream, err := s.client.ReadStream(remotePath)
 	if err != nil {
-		return "", err
+		return err
 	}
 	defer func() {
 		_ = stream.Close()
 	}()
 
-	localFilePath := remoteToLocalPath(s.localDirectory, remotePath)
 	err = os.MkdirAll(filepath.Dir(localFilePath), os.ModePerm)
 	if err != nil {
-		return "", err
+		return err
 	}
 
 	localFile, err := os.Create(localFilePath)
 	if err != nil {
-		return "", err
+		return err
 	}
 	defer func() {
 		_ = localFile.Close()
@@ -132,10 +133,10 @@ func (s *urlSyncer) downloadFile(remotePath string) (string, error) {
 
 	_, err = localFile.ReadFrom(stream)
 	if err != nil {
-		return "", err
+		return err
 	}
 
-	return localFilePath, nil
+	return nil
 }
 
 func (s *urlSyncer) syncAll() iter.Seq[Event] {
@@ -157,7 +158,30 @@ func (s *urlSyncer) syncAll() iter.Seq[Event] {
 				continue
 			}
 
-			localFilePath, err := s.downloadFile(file.path)
+			localFilePath := remoteToLocalPath(s.localDirectory, file.path)
+			_, err := os.Stat(localFilePath)
+			if err != nil && !os.IsNotExist(err) {
+				if !yield(ErrorEvent{
+					Err:        fmt.Errorf("failed to check if file exists %s: %w", localFilePath, err),
+					RemoteFile: file.path,
+				}) {
+					return
+				}
+				continue
+			}
+			fileAlreadyExists := err == nil
+			if fileAlreadyExists && s.fileAlreadyExistsStrategy == config.Skip {
+				if !yield(FileDownloadSkippedEvent{
+					Reason:     "file already exists",
+					RemoteFile: file.path,
+					Stats:      file.info,
+				}) {
+					return
+				}
+				continue
+			}
+
+			err = s.downloadFile(file.path, localFilePath)
 			if err != nil {
 				if !yield(ErrorEvent{
 					Err:        fmt.Errorf("failed to download file %s: %w", file, err),
@@ -203,14 +227,16 @@ func (s *urlSyncer) yieldWebdavIgnoredFiles(yield func(Event) bool, file fileInf
 }
 
 type Syncer struct {
-	username string
-	password string
+	username                  string
+	password                  string
+	fileAlreadyExistsStrategy config.AlreadyExistsStrategy
 }
 
-func NewSyncer(username, password string) (*Syncer, error) {
+func NewSyncer(username, password string, fileAlreadyExistsStrategy config.AlreadyExistsStrategy) (*Syncer, error) {
 	return &Syncer{
-		username: username,
-		password: password,
+		username:                  username,
+		password:                  password,
+		fileAlreadyExistsStrategy: fileAlreadyExistsStrategy,
 	}, nil
 }
 
@@ -231,8 +257,9 @@ func (s *Syncer) Sync(url, localDirectory string) (iter.Seq[Event], error) {
 	}
 
 	syncer := urlSyncer{
-		client:         client,
-		localDirectory: localDirectory,
+		client:                    client,
+		localDirectory:            localDirectory,
+		fileAlreadyExistsStrategy: s.fileAlreadyExistsStrategy,
 	}
 	return syncer.syncAll(), nil
 }

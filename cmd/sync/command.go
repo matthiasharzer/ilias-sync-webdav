@@ -7,6 +7,7 @@ import (
 	"path"
 	"path/filepath"
 
+	"github.com/dustin/go-humanize"
 	"github.com/fatih/color"
 	"github.com/matthiasharzer/ilias-sync-webdav/config"
 	"github.com/matthiasharzer/ilias-sync-webdav/webdav"
@@ -27,12 +28,14 @@ func newStatItem[T webdav.Event](event T, target config.Target) statItem[T] {
 
 type syncStats struct {
 	Downloaded []statItem[webdav.FileDownloadedEvent]
+	Skipped    []statItem[webdav.FileDownloadSkippedEvent]
 	Ignored    []statItem[webdav.FileIgnoredEvent]
 	Errors     []statItem[webdav.ErrorEvent]
 }
 
 func (s *syncStats) Add(other syncStats) {
 	s.Downloaded = append(s.Downloaded, other.Downloaded...)
+	s.Skipped = append(s.Skipped, other.Skipped...)
 	s.Ignored = append(s.Ignored, other.Ignored...)
 	s.Errors = append(s.Errors, other.Errors...)
 }
@@ -64,7 +67,7 @@ var Command = &cobra.Command{
 			return fmt.Errorf("no targets specified in the config file")
 		}
 
-		syncer, err := webdav.NewSyncer(syncerConfig.Username, syncerConfig.Password)
+		syncer, err := webdav.NewSyncer(syncerConfig.Username, syncerConfig.Password, syncerConfig.AlreadyExistsStrategy)
 		if err != nil {
 			return fmt.Errorf("failed to create WebDAV syncer: %v", err)
 		}
@@ -93,7 +96,8 @@ var Command = &cobra.Command{
 			for event := range events {
 				switch e := event.(type) {
 				case webdav.FileDownloadedEvent:
-					fmt.Printf("\tDownloaded %s -> %s\n", color.BlueString(e.RemoteFile), color.GreenString(e.LocalFile))
+					size := humanize.Bytes(uint64(e.Stats.Size()))
+					fmt.Printf("\tDownloaded %s -> %s (%s)\n", color.BlueString(e.RemoteFile), color.GreenString(e.LocalFile), color.YellowString(size))
 					stats.Downloaded = append(stats.Downloaded, newStatItem(e, target))
 				case webdav.FileIgnoredEvent:
 					fmt.Printf("\tIgnored %s\n", color.YellowString(e.RemoteFile))
@@ -104,19 +108,22 @@ var Command = &cobra.Command{
 				case webdav.ErrorEvent:
 					fmt.Printf("\tError downloading %s: %v\n", color.RedString(e.RemoteFile), e.Err)
 					stats.Errors = append(stats.Errors, newStatItem(e, target))
+				case webdav.FileDownloadSkippedEvent:
+					if e.Reason != "" {
+						fmt.Printf("\tSkipped %s (%s)\n", color.YellowString(e.RemoteFile), color.RGB(100, 100, 100).Sprint(e.Reason))
+					} else {
+						fmt.Printf("\tSkipped %s\n", color.YellowString(e.RemoteFile))
+					}
+					stats.Skipped = append(stats.Skipped, newStatItem(e, target))
 				}
 			}
 			globalStats.Add(stats)
 
 			fmt.Printf("-----\nSummary for course %s (%s):\n", color.BlueString(target.Name), color.BlueString(target.CourseID))
-			fmt.Printf("Downloaded files: %s\n", color.GreenString(fmt.Sprintf("%d", len(stats.Downloaded))))
-			fmt.Printf("Ignored files: %s\n", color.YellowString(fmt.Sprintf("%d", len(stats.Ignored))))
-			fmt.Printf("Errors: %s\n", color.RedString(fmt.Sprintf("%d", len(stats.Errors))))
+			printStats(stats)
 		}
 		fmt.Printf("-----\nOverall Summary:\n")
-		fmt.Printf("Downloaded files: %s\n", color.GreenString(fmt.Sprintf("%d", len(globalStats.Downloaded))))
-		fmt.Printf("Ignored files: %s\n", color.YellowString(fmt.Sprintf("%d", len(globalStats.Ignored))))
-		fmt.Printf("Errors: %s\n", color.RedString(fmt.Sprintf("%d", len(globalStats.Errors))))
+		printStats(globalStats)
 
 		if len(globalStats.Ignored) == 0 {
 			return nil
@@ -129,4 +136,17 @@ var Command = &cobra.Command{
 		}
 		return nil
 	},
+}
+
+func printStats(stats syncStats) {
+	totalSize := int64(0)
+	for _, downloaded := range stats.Downloaded {
+		totalSize += downloaded.Event.Stats.Size()
+	}
+	transferredSize := humanize.Bytes(uint64(totalSize))
+
+	fmt.Printf("Downloaded files: %s (%s)\n", color.GreenString(fmt.Sprintf("%d", len(stats.Downloaded))), color.YellowString(transferredSize))
+	fmt.Printf("Skipped files: %s\n", color.YellowString(fmt.Sprintf("%d", len(stats.Skipped))))
+	fmt.Printf("Ignored files: %s\n", color.YellowString(fmt.Sprintf("%d", len(stats.Ignored))))
+	fmt.Printf("Errors: %s\n", color.RedString(fmt.Sprintf("%d", len(stats.Errors))))
 }
