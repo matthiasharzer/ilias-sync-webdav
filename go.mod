@@ -24,5 +24,3 @@ require (
 	golang.org/x/tools v0.51.0 // indirect
 	honnef.co/go/tools v0.8.2 // indirect
 )
-
-
