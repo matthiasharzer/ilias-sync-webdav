@@ -59,6 +59,7 @@ var Command = &cobra.Command{
 	Use:  "sync",
 	Long: "Sync files from ILIAS WebDAV to local directory",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		orangeString := color.RGB(255, 165, 0).SprintfFunc()
 		syncerConfig, err := config.ParseFile(configFile)
 		if err != nil {
 			return fmt.Errorf("failed to parse config file: %v", err)
@@ -99,15 +100,6 @@ var Command = &cobra.Command{
 					size := humanize.Bytes(uint64(e.Stats.Size()))
 					fmt.Printf("\tDownloaded %s -> %s (%s)\n", color.BlueString(e.RemoteFile), color.GreenString(e.LocalFile), color.YellowString(size))
 					stats.Downloaded = append(stats.Downloaded, newStatItem(e, target))
-				case webdav.FileIgnoredEvent:
-					fmt.Printf("\tIgnored %s\n", color.YellowString(e.RemoteFile))
-					if e.Reason != "" {
-						fmt.Printf("\t\tReason: %s\n", color.YellowString(e.Reason))
-					}
-					stats.Ignored = append(stats.Ignored, newStatItem(e, target))
-				case webdav.ErrorEvent:
-					fmt.Printf("\tError downloading %s: %v\n", color.RedString(e.RemoteFile), e.Err)
-					stats.Errors = append(stats.Errors, newStatItem(e, target))
 				case webdav.FileDownloadSkippedEvent:
 					if e.Reason != "" {
 						fmt.Printf("\tSkipped %s (%s)\n", color.YellowString(e.RemoteFile), color.RGB(100, 100, 100).Sprint(e.Reason))
@@ -115,12 +107,30 @@ var Command = &cobra.Command{
 						fmt.Printf("\tSkipped %s\n", color.YellowString(e.RemoteFile))
 					}
 					stats.Skipped = append(stats.Skipped, newStatItem(e, target))
+				case webdav.FileIgnoredEvent:
+					fmt.Printf("\tIgnored %s\n", orangeString(e.RemoteFile))
+					if e.Reason != "" {
+						fmt.Printf("\t\tReason: %s\n", color.RedString(e.Reason))
+					}
+					stats.Ignored = append(stats.Ignored, newStatItem(e, target))
+				case webdav.ErrorEvent:
+					fmt.Printf("\tError downloading %s: %v\n", color.RedString(e.RemoteFile), e.Err)
+					stats.Errors = append(stats.Errors, newStatItem(e, target))
 				}
 			}
 			globalStats.Add(stats)
 		}
+
+		totalSize := int64(0)
+		for _, downloaded := range globalStats.Downloaded {
+			totalSize += downloaded.Event.Stats.Size()
+		}
 		fmt.Printf("-----\nOverall Summary:\n")
-		printStats(globalStats)
+		transferredSize := humanize.Bytes(uint64(totalSize))
+		fmt.Printf("Downloaded files: %s (%s)\n", color.GreenString(fmt.Sprintf("%d", len(globalStats.Downloaded))), color.YellowString(transferredSize))
+		fmt.Printf("Skipped files: %s\n", color.YellowString(fmt.Sprintf("%d", len(globalStats.Skipped))))
+		fmt.Printf("Ignored files: %s\n", orangeString(fmt.Sprintf("%d", len(globalStats.Ignored))))
+		fmt.Printf("Errors: %s\n", color.RedString(fmt.Sprintf("%d", len(globalStats.Errors))))
 
 		if len(globalStats.Ignored) == 0 {
 			return nil
@@ -129,21 +139,8 @@ var Command = &cobra.Command{
 		fmt.Printf("List of ignored files:\n")
 		for _, ignored := range globalStats.Ignored {
 			fullPath := path.Join(ignored.Target.Name, ignored.Event.RemoteFile)
-			fmt.Printf("\t%s\n", color.YellowString(fullPath))
+			fmt.Printf("\t%s\n", orangeString(fullPath))
 		}
 		return nil
 	},
-}
-
-func printStats(stats syncStats) {
-	totalSize := int64(0)
-	for _, downloaded := range stats.Downloaded {
-		totalSize += downloaded.Event.Stats.Size()
-	}
-	transferredSize := humanize.Bytes(uint64(totalSize))
-
-	fmt.Printf("Downloaded files: %s (%s)\n", color.GreenString(fmt.Sprintf("%d", len(stats.Downloaded))), color.YellowString(transferredSize))
-	fmt.Printf("Skipped files: %s\n", color.YellowString(fmt.Sprintf("%d", len(stats.Skipped))))
-	fmt.Printf("Ignored files: %s\n", color.YellowString(fmt.Sprintf("%d", len(stats.Ignored))))
-	fmt.Printf("Errors: %s\n", color.RedString(fmt.Sprintf("%d", len(stats.Errors))))
 }
