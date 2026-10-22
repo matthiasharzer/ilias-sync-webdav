@@ -4,7 +4,11 @@ go 1.27.3
 
 tool honnef.co/go/tools/cmd/staticcheck
 
-require github.com/spf13/cobra v1.10.2
+require (
+	github.com/bigkevmcd/go-configparser v0.0.0-20260823144315-8f2e819df55d
+	github.com/spf13/cobra v1.10.2
+	github.com/studio-b12/gowebdav v0.13.0
+)
 
 require (
 	github.com/BurntSushi/toml v1.4.1-0.20240526193622-a339e1f7089c // indirect
