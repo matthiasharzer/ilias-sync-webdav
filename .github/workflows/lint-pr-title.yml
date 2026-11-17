@@ -26,3 +26,4 @@ jobs:
             chore
             feat
             fix
+            deps
